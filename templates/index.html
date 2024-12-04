@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POST Requests Viewer</title>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            text-align: center;
+            background-color: #007BFF;
+            color: white;
+            padding: 20px;
+            margin: 0;
+        }
+        #controls {
+            max-width: 800px;
+            margin: 20px auto;
+            text-align: center;
+        }
+        #serverInput {
+            padding: 10px;
+            width: 300px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-right: 10px;
+        }
+        #post-requests {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin: 20px auto;
+            padding: 20px;
+            max-width: 1200px;
+        }
+        .request {
+            position: relative;
+            width: 270px;
+            height: 230px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f9f9f9;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .request h2 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        .request pre {
+            background-color: #eef;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 100px;
+            font-size: 14px;
+        }
+        .status {
+            font-weight: bold;
+        }
+        .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            cursor: pointer;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            line-height: 18px;
+            font-size: 14px;
+        }
+        #summary-card {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 220px;
+            font-size: 16px;
+        }
+        #summary-card h2 {
+            margin-top: 0;
+            font-size: 18px;
+            text-align: center;
+        }
+        #summary-card p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>POST Requests Dashboard</h1>
+
+    <div id="controls">
+        <input type="text" id="serverInput" placeholder="Enter server name">
+        <button onclick="checkServer()">Check Server</button>
+    </div>
+
+    <div id="summary-card">
+        <h2>Server Summary</h2>
+        <p>Total Servers: <span id="total-servers">0</span></p>
+        <p style="color: green;">Online Servers: <span id="online-servers">0</span></p>
+        <p style="color: red;">Offline Servers: <span id="offline-servers">0</span></p>
+    </div>
+
+    <div id="post-requests"></div>
+
+    <script>
+        const socket = io();
+        const requestsContainer = document.getElementById("post-requests");
+
+        let onlineCount = 0;
+        let offlineCount = 0;
+        const servers = {};
+
+        // Function to update the summary card counts
+        function updateSummary() {
+            document.getElementById("total-servers").textContent = onlineCount + offlineCount;
+            document.getElementById("online-servers").textContent = onlineCount;
+            document.getElementById("offline-servers").textContent = offlineCount;
+        }
+
+        // Function to update or create a card for a hostname
+        function updatePostRequest(hostname, data) {
+            let requestDiv = document.getElementById(`request-${hostname}`);
+
+            if (!requestDiv) {
+                createCard(hostname, "online", data);
+            } else {
+                updateCardContent(requestDiv, hostname, "online", data);
+            }
+
+            if (!servers[hostname] || servers[hostname] === "offline") {
+                servers[hostname] = "online";
+                onlineCount++;
+                offlineCount = Math.max(offlineCount - 1, 0);
+                updateSummary();
+            }
+        }
+
+        // Function to create a new card
+        function createCard(hostname, status, data) {
+            const requestDiv = document.createElement("div");
+            requestDiv.className = "request";
+            requestDiv.id = `request-${hostname}`;
+
+            requestDiv.innerHTML = `
+                <button class="close-btn" onclick="removeCard('${hostname}')">&times;</button>
+                <h2>Hostname: ${hostname}</h2>
+                <p class="status" id="status-${hostname}">Status: ${status.charAt(0).toUpperCase() + status.slice(1)}</p>
+                <pre id="data-${hostname}">${data ? JSON.stringify(data, null, 2) : "No data available"}</pre>
+            `;
+
+            requestsContainer.appendChild(requestDiv);
+            document.getElementById(`status-${hostname}`).style.color = status === "online" ? "green" : "red";
+        }
+
+        // Function to update an existing card's content
+        function updateCardContent(requestDiv, hostname, status, data) {
+            requestDiv.querySelector(`#data-${hostname}`).textContent = data ? JSON.stringify(data, null, 2) : "No data available";
+            const statusElement = requestDiv.querySelector(`#status-${hostname}`);
+            statusElement.textContent = `Status: ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+            statusElement.style.color = status === "online" ? "green" : "red";
+        }
+
+        // Socket event listener for new POST requests
+        socket.on("newPostRequest", (update) => {
+            for (const [hostname, data] of Object.entries(update)) {
+                updatePostRequest(hostname, data);
+            }
+        });
+
+        // Function to check a server's status manually
+        function checkServer() {
+            const serverInput = document.getElementById("serverInput").value.trim();
+            if (!serverInput) {
+                alert("Please enter a server name.");
+                return;
+            }
+
+            if (!document.getElementById(`request-${serverInput}`)) {
+                createCard(serverInput, "offline", null);
+                servers[serverInput] = "offline";
+                offlineCount++;
+                updateSummary();
+            }
+        }
+
+        // Function to remove a card from the view
+        function removeCard(hostname) {
+            const requestDiv = document.getElementById(`request-${hostname}`);
+            if (requestDiv) {
+                requestDiv.remove();
+
+                if (servers[hostname] === "online") {
+                    onlineCount--;
+                } else {
+                    offlineCount--;
+                }
+
+                delete servers[hostname];
+                updateSummary();
+            }
+        }
+    </script>
+</body>
+</html>
