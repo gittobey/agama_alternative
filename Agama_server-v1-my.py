@@ -8,6 +8,8 @@ import os
 import json
 import mysql.connector
 from datetime import datetime
+from flask_cors import cross_origin
+from flask_cors import CORS
 
 
 # === Configuration ===
@@ -38,6 +40,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",  # Allow all origins
+	"methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+	"allow_headers": ["Content-Type", "Authorization"]
+	}
+})
+
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
